@@ -37,12 +37,16 @@ async def main() -> int:
         wav = soxr.resample(wav, sr, 16000)
 
     pcm16 = (np.clip(wav, -1, 1) * 32767).astype("<i2").tobytes()
-    url = f"{args.url}/ws/transcribe?language={args.language}" if not args.url.endswith(
-        "transcribe"
-    ) else args.url
-    if "?" not in url.split("/")[-1]:
-        sep = "&" if "?" in url else "?"
-        url = f"{url}{sep}language={args.language}"
+
+    url = args.url.strip()
+    if url.startswith("https://"):
+        url = "wss://" + url[len("https://"):]
+    elif url.startswith("http://"):
+        url = "ws://" + url[len("http://"):]
+    if "/ws/transcribe" not in url:
+        url = url.rstrip("/") + "/ws/transcribe"
+    if "language=" not in url:
+        url += ("&" if "?" in url else "?") + f"language={args.language}"
 
     finals, partials, got_final = 0, 0, asyncio.Event()
 

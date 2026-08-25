@@ -74,8 +74,20 @@ class Engine:
             if settings.device_resolved == "cuda" and "load_in" not in "".join(kwargs):
                 self.model.model = self.model.model.to("cuda")
 
-        self.is_ready = True
         logger.info(f"Model loaded in {time.perf_counter() - start:.1f}s")
+
+        # Warm up before reporting ready: vLLM's first requests pay one-time
+        # costs (kernel selection / CUDA graphs) that would otherwise be paid
+        # by the first real client, appearing as a multi-second stall.
+        try:
+            t = time.perf_counter()
+            silence = np.zeros(self.settings.sample_rate // 2, dtype=np.float32)
+            self.transcribe_window(silence, language=self.settings.default_language)
+            logger.info(f"Warmup decode done in {time.perf_counter() - t:.1f}s")
+        except Exception as e:
+            logger.warning(f"Warmup decode failed (non-fatal): {e}")
+
+        self.is_ready = True
 
     # ------------------------------------------------------------------ #
     # Backend selection                                                  #
