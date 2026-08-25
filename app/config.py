@@ -21,7 +21,7 @@ def _env_int(name: str, default: str) -> int:
 @dataclass(frozen=True)
 class Settings:
     # --- Model ---
-    model_name: str = field(default_factory=lambda: os.getenv("ASR_MODEL", "Qwen/Qwen3-ASR-0.6B"))
+    model_name: str = field(default_factory=lambda: os.getenv("ASR_MODEL", "Qwen/Qwen3-ASR-1.7B"))
     hf_token: str = field(
         default_factory=lambda: os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN", "")
     )

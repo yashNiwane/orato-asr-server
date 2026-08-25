@@ -53,7 +53,7 @@ waits for engine readiness, and auto-restarts the server if it ever exits
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ASR_MODEL` | `Qwen/Qwen3-ASR-0.6B` | Model id or local path |
+| `ASR_MODEL` | `Qwen/Qwen3-ASR-1.7B` | Model id or local path |
 | `ASR_BACKEND` | `auto` | `auto` \| `transformers` \| `vllm` |
 | `DEVICE` / `TORCH_DTYPE` | `auto` | e.g. `cuda` / `float16` |
 | `STREAM_CHUNK_DURATION` | `0.15` | Seconds between interim partials |
