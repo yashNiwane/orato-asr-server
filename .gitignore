@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+model_weights/
+*.wav
+*.m4a
+*.mp3
+.ipynb_checkpoints/
+kaggle_deploy/output/
