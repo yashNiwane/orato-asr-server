@@ -1,4 +1,4 @@
-qwen-asr[vllm]>=0.1
+qwen-asr[vllm]>=0.0.6
 fastapi>=0.115
 uvicorn>=0.30
 websockets>=12
