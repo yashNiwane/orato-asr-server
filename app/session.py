@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+from loguru import logger
 
 from app.config import Settings
 from app.engine import Engine
@@ -35,6 +36,8 @@ class StreamingSession:
         self.is_speaking = False
         self.confirmed_transcript = ""
         self.last_partial = ""
+        self.last_final_text = ""
+        self.final_repeat_count = 0
 
         # Stats
         self.chunks_received = 0
@@ -91,6 +94,8 @@ class StreamingSession:
     def reset(self, language: Optional[str] = None) -> None:
         self.language = language or self.language
         self._reset_buffers()
+        self.last_final_text = ""
+        self.final_repeat_count = 0
 
     def stats(self) -> Dict[str, Any]:
         return {
@@ -117,19 +122,34 @@ class StreamingSession:
             )
             text = result["text"].strip()
             if text and text != "<unintelligible>":
-                self.confirmed_transcript = f"{self.confirmed_transcript} {text}".strip()
-                self.finals_sent += 1
-                events.append(
-                    {
-                        "type": "final",
-                        "session_id": self.session_id,
-                        "text": text,
-                        "cumulative_text": self.confirmed_transcript,
-                        "language": result["language"],
-                        "duration_sec": result["duration_sec"],
-                        "latency_ms": result["latency_ms"],
-                    }
-                )
+                # Anti-hallucination guard: LLM-ASR can enter degenerate
+                # repetition loops on noisy audio. Never let an identical final
+                # chain more than twice, and keep looping garbage out of the
+                # rolling context so it cannot feed itself.
+                if text == self.last_final_text:
+                    self.final_repeat_count += 1
+                else:
+                    self.final_repeat_count = 0
+                self.last_final_text = text
+
+                if self.final_repeat_count < 2:
+                    self.confirmed_transcript = f"{self.confirmed_transcript} {text}".strip()
+                    self.finals_sent += 1
+                    events.append(
+                        {
+                            "type": "final",
+                            "session_id": self.session_id,
+                            "text": text,
+                            "cumulative_text": self.confirmed_transcript,
+                            "language": result["language"],
+                            "duration_sec": result["duration_sec"],
+                            "latency_ms": result["latency_ms"],
+                        }
+                    )
+                else:
+                    logger.warning(
+                        f"[{self.session_id}] suppressed repeating final #{self.final_repeat_count}: {text[:60]}"
+                    )
 
         self._reset_buffers()
         events.append({"type": "speech_end", "session_id": self.session_id})
