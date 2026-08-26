@@ -7,6 +7,7 @@ clients: speech_start / partial / final / speech_end.
 
 from __future__ import annotations
 
+import time
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -42,6 +43,7 @@ class StreamingSession:
         # Partial-promotion fast path state
         self._last_partial_text = ""
         self._last_partial_buffer_len = -1
+        self._turn_wall_start: float | None = None
 
         # Stats
         self.chunks_received = 0
@@ -73,6 +75,7 @@ class StreamingSession:
             self.silence_counter = 0
             if not self.is_speaking:
                 self.is_speaking = True
+                self._turn_wall_start = time.time()
                 events.append({"type": "speech_start", "session_id": self.session_id, "rms": round(rms, 5)})
         else:
             self.silence_counter += len(pcm_chunk)
@@ -216,8 +219,14 @@ class StreamingSession:
 
         self.confirmed_transcript = f"{self.confirmed_transcript} {text}".strip()
         self.finals_sent += 1
+        turn_ms = (
+            round((time.time() - self._turn_wall_start) * 1000)
+            if self._turn_wall_start is not None
+            else None
+        )
         logger.info(
-            f"[{self.session_id}] final ({'reused partial' if reused else 'decoded'}, {latency_ms}ms): {text[:60]}"
+            f"[{self.session_id}] final ({'reused partial' if reused else 'decoded'}, "
+            f"decode={latency_ms}ms, turn={turn_ms}ms): {text[:60]}"
         )
         return {
             "type": "final",
@@ -261,3 +270,4 @@ class StreamingSession:
         self.last_partial = ""
         self._last_partial_text = ""
         self._last_partial_buffer_len = -1
+        self._turn_wall_start = None
