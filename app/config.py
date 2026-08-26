@@ -64,6 +64,12 @@ class Settings:
     silence_flush_duration: float = field(
         default_factory=lambda: _env_float("SILENCE_DURATION_FLUSH", "0.4")
     )  # trailing silence that finalizes an utterance
+    # Fast path: promote the latest interim partial to a final instead of
+    # re-decoding the whole utterance, when the partial is fresh enough and
+    # covers everything buffered. Saves the entire final GPU pass.
+    final_reuse_max_age_sec: float = field(
+        default_factory=lambda: _env_float("FINAL_REUSE_MAX_AGE_SEC", "0.8")
+    )
     vad_energy_threshold: float = field(
         default_factory=lambda: _env_float("VAD_ENERGY_THRESHOLD", "0.003")
     )

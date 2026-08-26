@@ -39,6 +39,9 @@ class StreamingSession:
         self.last_partial = ""
         self.last_final_text = ""
         self.final_repeat_count = 0
+        # Partial-promotion fast path state
+        self._last_partial_text = ""
+        self._last_partial_buffer_len = -1
 
         # Stats
         self.chunks_received = 0
@@ -103,7 +106,34 @@ class StreamingSession:
     def flush(self) -> List[Dict[str, Any]]:
         """Force-finalize whatever is buffered (client-requested turn end)."""
         events: List[Dict[str, Any]] = []
-        if len(self.utterance_buffer) >= int(0.25 * self.settings.sample_rate):
+        sr = self.settings.sample_rate
+        buf_len = len(self.utterance_buffer)
+
+        # Fast path: the latest partial is fresh AND covers everything buffered
+        # (utterance fits inside one context window) -> promote it, skip GPU.
+        stale_samples = int(self.settings.final_reuse_max_age_sec * sr)
+        fresh = (
+            self._last_partial_text
+            and 0 <= self._last_partial_buffer_len <= buf_len
+            and (buf_len - self._last_partial_buffer_len) <= stale_samples
+            and buf_len <= self.context_samples
+            and buf_len >= int(0.25 * sr)
+        )
+        if fresh:
+            event = self._commit_final(
+                text=self._last_partial_text,
+                language=self.language,
+                duration_sec=round(buf_len / sr, 3),
+                latency_ms=0.0,
+                reused=True,
+            )
+            if event:
+                events.append(event)
+            self._reset_buffers()
+            events.append({"type": "speech_end", "session_id": self.session_id})
+            return events
+
+        if buf_len >= int(0.25 * sr):
             events.extend(self._finalize(min_duration_sec=0.25))
         else:
             self._reset_buffers()
@@ -147,38 +177,57 @@ class StreamingSession:
             )
             text = result["text"].strip()
             if text and text != "<unintelligible>":
-                # Anti-hallucination guard: LLM-ASR can enter degenerate
-                # repetition loops on noisy audio. Never let an identical final
-                # chain more than twice, and keep looping garbage out of the
-                # rolling context so it cannot feed itself.
-                if text == self.last_final_text:
-                    self.final_repeat_count += 1
-                else:
-                    self.final_repeat_count = 0
-                self.last_final_text = text
-
-                if self.final_repeat_count < 2:
-                    self.confirmed_transcript = f"{self.confirmed_transcript} {text}".strip()
-                    self.finals_sent += 1
-                    events.append(
-                        {
-                            "type": "final",
-                            "session_id": self.session_id,
-                            "text": text,
-                            "cumulative_text": self.confirmed_transcript,
-                            "language": result["language"],
-                            "duration_sec": result["duration_sec"],
-                            "latency_ms": result["latency_ms"],
-                        }
-                    )
-                else:
-                    logger.warning(
-                        f"[{self.session_id}] suppressed repeating final #{self.final_repeat_count}: {text[:60]}"
-                    )
+                event = self._commit_final(
+                    text=text,
+                    language=result["language"],
+                    duration_sec=result["duration_sec"],
+                    latency_ms=result["latency_ms"],
+                )
+                if event:
+                    events.append(event)
 
         self._reset_buffers()
         events.append({"type": "speech_end", "session_id": self.session_id})
         return events
+
+    def _commit_final(
+        self,
+        *,
+        text: str,
+        language,
+        duration_sec: float,
+        latency_ms: float,
+        reused: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """Dedupe-guarded final emission shared by batch decode + fast path."""
+        # Anti-hallucination guard: never let an identical final chain more
+        # than twice (degenerate repetition loops on noisy audio).
+        if text == self.last_final_text:
+            self.final_repeat_count += 1
+        else:
+            self.final_repeat_count = 0
+        self.last_final_text = text
+
+        if self.final_repeat_count >= 2:
+            logger.warning(
+                f"[{self.session_id}] suppressed repeating final #{self.final_repeat_count}: {text[:60]}"
+            )
+            return None
+
+        self.confirmed_transcript = f"{self.confirmed_transcript} {text}".strip()
+        self.finals_sent += 1
+        logger.info(
+            f"[{self.session_id}] final ({'reused partial' if reused else 'decoded'}, {latency_ms}ms): {text[:60]}"
+        )
+        return {
+            "type": "final",
+            "session_id": self.session_id,
+            "text": text,
+            "cumulative_text": self.confirmed_transcript,
+            "language": language,
+            "duration_sec": duration_sec,
+            "latency_ms": latency_ms,
+        }
 
     def _partial(self) -> Optional[Dict[str, Any]]:
         segment = self.utterance_buffer[-self.context_samples :]
@@ -188,6 +237,8 @@ class StreamingSession:
             max_tokens=self.settings.max_stream_tokens,
         )
         text = result["text"].strip()
+        self._last_partial_text = text or ""
+        self._last_partial_buffer_len = len(self.utterance_buffer)
         if not text or text == "<unintelligible>" or text == self.last_partial:
             return None
         self.last_partial = text
@@ -208,3 +259,5 @@ class StreamingSession:
         self.is_speaking = False
         self.silence_counter = 0
         self.last_partial = ""
+        self._last_partial_text = ""
+        self._last_partial_buffer_len = -1
