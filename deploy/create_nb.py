@@ -38,7 +38,10 @@ notebook = {
             "source": [
                 "# Step 1: Install core GPU inference stack\n",
                 "!pip install -q -U \"qwen-asr[vllm]\"\n",
-                "!pip show qwen-asr vllm | grep -E \"^(Name|Version):\"\n"
+                "# Kaggle ships an old pyOpenSSL that breaks against upgraded cryptography\n",
+                "# (TensorFlow's oauth2client import chain). Upgrading heals it.\n",
+                "!pip install -q -U pyopenssl\n",
+                "!pip show qwen-asr vllm transformers | grep -E \"^(Name|Version):\"\n"
             ]
         },
         {
@@ -87,6 +90,11 @@ notebook = {
                 "os.environ['HF_TOKEN'] = _hf_token\n",
                 "os.environ['HUGGING_FACE_HUB_TOKEN'] = _hf_token\n",
                 "print('[+] HF_TOKEN loaded from Kaggle Secrets')\n",
+                "\n",
+                "# Keep transformers away from Kaggle's TensorFlow (server never uses TF,\n",
+                "# and TF's import chain breaks against upgraded cryptography).\n",
+                "os.environ['TRANSFORMERS_NO_TF'] = '1'\n",
+                "os.environ['USE_TF'] = '0'\n",
                 "\n",
                 "# Model / backend\n",
                 "os.environ['ASR_MODEL'] = 'Qwen/Qwen3-ASR-1.7B'   # or tryorato/orato-asr-hindi-v1 fine-tune\n",
