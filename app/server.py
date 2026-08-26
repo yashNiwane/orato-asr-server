@@ -185,10 +185,19 @@ async def websocket_transcribe(websocket: WebSocket, language: Optional[str] = N
     audio_queue: asyncio.Queue = asyncio.Queue(maxsize=settings.ws_queue_size)
 
     async def sender_worker():
+        skip_logged_at = 0.0
         while True:
             pcm_chunk = await audio_queue.get()
             try:
-                events: List[Dict[str, Any]] = await run_gpu(session.process_chunk, pcm_chunk)
+                # Backpressure guard: when the GPU backlog is deep, skip the
+                # expensive interim decodes (finals still happen on silence).
+                allow_partial = audio_queue.qsize() < settings.partial_skip_queue_depth
+                if not allow_partial and time.time() - skip_logged_at > 5:
+                    logger.info(f"[ws:{session_id}] backlog - skipping partial decodes")
+                    skip_logged_at = time.time()
+                events: List[Dict[str, Any]] = await run_gpu(
+                    session.process_chunk, pcm_chunk, allow_partial
+                )
                 for event in events:
                     await _send_event(websocket, event)
             except GPUWedge:

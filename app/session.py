@@ -43,13 +43,18 @@ class StreamingSession:
         # Stats
         self.chunks_received = 0
         self.partials_sent = 0
+        self.partials_skipped = 0
         self.finals_sent = 0
         self.audio_seconds = 0.0
 
     # ------------------------------------------------------------------ #
 
-    def process_chunk(self, pcm_chunk: np.ndarray) -> List[Dict[str, Any]]:
-        """Append one PCM float32 chunk; return transcript/VAD events."""
+    def process_chunk(self, pcm_chunk: np.ndarray, allow_partial: bool = True) -> List[Dict[str, Any]]:
+        """Append one PCM float32 chunk; return transcript/VAD events.
+
+        allow_partial=False processes VAD/buffers but skips the expensive
+        interim decode - used by the server when the GPU backlog is deep.
+        """
         events: List[Dict[str, Any]] = []
         s = self.settings
         if len(pcm_chunk) == 0:
@@ -86,7 +91,9 @@ class StreamingSession:
 
         # Interim decode on the fixed cadence while speaking.
         if self.is_speaking and len(self.audio_buffer) >= self.chunk_samples:
-            event = self._partial()
+            event = self._partial() if allow_partial else None
+            if not allow_partial:
+                self.partials_skipped += 1
             if event:
                 events.append(event)
             self.audio_buffer = np.zeros((0,), dtype=np.float32)
@@ -112,6 +119,7 @@ class StreamingSession:
         return {
             "chunks_received": self.chunks_received,
             "partials_sent": self.partials_sent,
+            "partials_skipped": self.partials_skipped,
             "finals_sent": self.finals_sent,
             "audio_seconds": round(self.audio_seconds, 2),
         }
@@ -127,7 +135,13 @@ class StreamingSession:
         )
         min_samples = int(duration * self.settings.sample_rate)
         if len(self.utterance_buffer) >= min_samples:
-            context = self.confirmed_transcript[-100:] if self.confirmed_transcript else ""
+            # No context feedback by default (see Settings.context_feedback):
+            # a single hallucination must not anchor every future decode.
+            context = (
+                self.confirmed_transcript[-100:]
+                if self.settings.context_feedback and self.confirmed_transcript
+                else ""
+            )
             result = self.engine.transcribe_utterance(
                 self.utterance_buffer, language=self.language, context=context
             )
@@ -168,10 +182,8 @@ class StreamingSession:
 
     def _partial(self) -> Optional[Dict[str, Any]]:
         segment = self.utterance_buffer[-self.context_samples :]
-        context = self.confirmed_transcript[-80:] if self.confirmed_transcript else ""
         result = self.engine.transcribe_window(
             segment,
-            context=context,
             language=self.language,
             max_tokens=self.settings.max_stream_tokens,
         )

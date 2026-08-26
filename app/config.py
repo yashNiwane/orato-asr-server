@@ -69,6 +69,15 @@ class Settings:
         default_factory=lambda: _env_float("MAX_UTTERANCE_DURATION", "12")
     )
     max_stream_tokens: int = field(default_factory=lambda: _env_int("MAX_STREAM_TOKENS", "24"))
+    # Feed previous transcripts back as decode context. OFF by default: when a
+    # hallucination slips in, context makes the model COPY it on every noisy
+    # window (self-reinforcing repetition loops + slow generations).
+    context_feedback: bool = field(default_factory=lambda: _env_bool("ASR_CONTEXT_FEEDBACK", "false"))
+    # When the GPU backlog exceeds this many queued chunks, interim partial
+    # decodes are skipped (audio still buffered/finalized) until it drains.
+    partial_skip_queue_depth: int = field(
+        default_factory=lambda: _env_int("PARTIAL_SKIP_QUEUE_DEPTH", "6")
+    )
 
     # --- Reliability ---
     decode_timeout_sec: float = field(
