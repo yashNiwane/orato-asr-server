@@ -21,7 +21,7 @@ class StreamingSession:
         self.session_id = session_id
         self.engine = engine
         self.settings = settings
-        self.language = language or settings.default_language
+        self.language = language or settings.language
 
         sr = settings.sample_rate
         self.chunk_samples = int(settings.stream_chunk_duration * sr)

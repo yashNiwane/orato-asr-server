@@ -88,7 +88,7 @@ class Engine:
         try:
             t = time.perf_counter()
             silence = np.zeros(self.settings.sample_rate // 2, dtype=np.float32)
-            self.transcribe_window(silence, language=self.settings.default_language)
+            self.transcribe_window(silence, language=self.settings.language)
             logger.info(f"Warmup decode done in {time.perf_counter() - t:.1f}s")
         except Exception as e:
             logger.warning(f"Warmup decode failed (non-fatal): {e}")
@@ -130,11 +130,11 @@ class Engine:
         results = self.model.transcribe(
             audio=(np.asarray(wav, dtype=np.float32), s.sample_rate),
             context=context or "",
-            language=language or s.default_language,
+            language=language or s.language,
         )
         res = results[0] if results else None
         text = (res.text if res else "").strip()
-        lang = (res.language if res else None) or language or s.default_language
+        lang = (res.language if res else None) or language or s.language
         return {
             "text": text,
             "language": lang,
@@ -161,13 +161,13 @@ class Engine:
         results = self.model.transcribe(
             audio=(wav, s.sample_rate),
             context=context or "",
-            language=language or s.default_language,
+            language=language or s.language,
         )
         elapsed = time.perf_counter() - t0
         res = results[0] if results else None
         return {
             "text": (res.text if res else "").strip(),
-            "language": (res.language if res else None) or language or s.default_language,
+            "language": (res.language if res else None) or language or s.language,
             "duration_sec": round(duration_sec, 3),
             "latency_ms": round(elapsed * 1000, 2),
             "rtf": round(elapsed / duration_sec, 3) if duration_sec > 0 else 0.0,
@@ -181,6 +181,6 @@ class Engine:
             "device": s.device_resolved,
             "dtype": str(s.dtype),
             "sample_rate": s.sample_rate,
-            "default_language": s.default_language,
+            "default_language": s.default_language or "auto",
             "is_ready": self.is_ready,
         }

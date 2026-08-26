@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from typing import Optional
 
 
 def _env_bool(name: str, default: str) -> bool:
@@ -44,7 +45,14 @@ class Settings:
 
     # --- Audio ---
     sample_rate: int = field(default_factory=lambda: _env_int("SAMPLE_RATE", "16000"))
-    default_language: str = field(default_factory=lambda: os.getenv("DEFAULT_LANGUAGE", "Hindi"))
+    # Empty string or "auto" -> let the model detect the spoken language.
+    default_language: str = field(default_factory=lambda: os.getenv("DEFAULT_LANGUAGE", "auto"))
+
+    @property
+    def language(self) -> Optional[str]:
+        """Normalized language hint: None means auto-detect."""
+        lang = self.default_language.strip()
+        return None if not lang or lang.lower() == "auto" else lang
 
     # --- Streaming (telecalling-tuned defaults) ---
     stream_chunk_duration: float = field(

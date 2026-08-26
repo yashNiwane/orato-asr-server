@@ -140,7 +140,7 @@ async def transcribe_file(
         result = await run_gpu(
             engine.transcribe_utterance,
             audio_bytes,
-            language or settings.default_language,
+            language or settings.language,
             context or "",
         )
         return {"success": True, "filename": file.filename, **result}
@@ -180,7 +180,7 @@ async def websocket_transcribe(websocket: WebSocket, language: Optional[str] = N
             "device": settings.device_resolved,
         }
     )
-    logger.info(f"[ws:{session_id}] connected language={session.language}")
+    logger.info(f"[ws:{session_id}] connected language={session.language or 'auto'}")
 
     audio_queue: asyncio.Queue = asyncio.Queue(maxsize=settings.ws_queue_size)
 
