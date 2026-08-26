@@ -28,6 +28,7 @@ class StreamingSession:
         self.context_samples = int(settings.stream_context_duration * sr)
         self.silence_flush_samples = int(settings.silence_flush_duration * sr)
         self.min_utterance_samples = int(settings.min_utterance_duration * sr)
+        self.max_utterance_samples = int(settings.max_utterance_duration * sr)
 
         # Buffers / state
         self.audio_buffer = np.zeros((0,), dtype=np.float32)
@@ -70,6 +71,16 @@ class StreamingSession:
 
         # Utterance complete: enough trailing silence while speaking.
         if self.is_speaking and self.silence_counter >= self.silence_flush_samples:
+            events.extend(self._finalize())
+            return events
+
+        # Safety valve: energy-VAD stuck on (noise/echo) would otherwise decode
+        # the same rolling window forever - hard-cap the utterance length.
+        if self.is_speaking and len(self.utterance_buffer) >= self.max_utterance_samples:
+            logger.warning(
+                f"[{self.session_id}] max utterance duration "
+                f"({self.settings.max_utterance_duration}s) reached - finalizing"
+            )
             events.extend(self._finalize())
             return events
 

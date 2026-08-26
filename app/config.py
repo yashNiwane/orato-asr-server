@@ -62,6 +62,12 @@ class Settings:
     min_utterance_duration: float = field(
         default_factory=lambda: _env_float("MIN_UTTERANCE_DURATION", "0.35")
     )
+    # Force-finalize an utterance after this much continuous "speech". Guards
+    # against energy-VAD never seeing silence (noise/echo), which would
+    # otherwise produce endless partial decodes of a stale rolling window.
+    max_utterance_duration: float = field(
+        default_factory=lambda: _env_float("MAX_UTTERANCE_DURATION", "12")
+    )
     max_stream_tokens: int = field(default_factory=lambda: _env_int("MAX_STREAM_TOKENS", "24"))
 
     # --- Reliability ---
