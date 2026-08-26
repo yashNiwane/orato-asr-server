@@ -53,11 +53,17 @@ class Engine:
             kwargs["token"] = settings.hf_token
 
         if self.backend == "vllm":
+            llm_kwargs: Dict[str, Any] = {}
+            if settings.vllm_max_model_len > 0:
+                llm_kwargs["max_model_len"] = settings.vllm_max_model_len
+            if settings.vllm_enforce_eager:
+                llm_kwargs["enforce_eager"] = True
             self.model = qwen_asr.Qwen3ASRModel.LLM(
                 model=settings.model_name,
                 gpu_memory_utilization=settings.vllm_gpu_memory_utilization,
                 max_new_tokens=settings.vllm_max_new_tokens,
                 max_inference_batch_size=settings.vllm_max_batch_size,
+                **llm_kwargs,
             )
         else:
             dtype_map = {"float16": torch.float16, "bfloat16": torch.bfloat16}

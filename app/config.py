@@ -36,6 +36,11 @@ class Settings:
     )
     vllm_max_new_tokens: int = field(default_factory=lambda: _env_int("VLLM_MAX_NEW_TOKENS", "256"))
     vllm_max_batch_size: int = field(default_factory=lambda: _env_int("VLLM_MAX_BATCH_SIZE", "32"))
+    # 0 disables the override. Cap context (e.g. 2048) so vLLM's worst-case
+    # audio profiling + KV allocation fit smaller GPUs like the T4.
+    vllm_max_model_len: int = field(default_factory=lambda: _env_int("VLLM_MAX_MODEL_LEN", "0"))
+    # Skip CUDA-graph capture (saves VRAM, ~10-20% slower decode).
+    vllm_enforce_eager: bool = field(default_factory=lambda: _env_bool("VLLM_ENFORCE_EAGER", "false"))
 
     # --- Audio ---
     sample_rate: int = field(default_factory=lambda: _env_int("SAMPLE_RATE", "16000"))
